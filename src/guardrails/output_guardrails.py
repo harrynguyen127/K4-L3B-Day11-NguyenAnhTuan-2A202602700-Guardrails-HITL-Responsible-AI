@@ -41,7 +41,7 @@ def content_filter(response: str) -> dict:
 
     # PII patterns to check
     PII_PATTERNS = {
-        "phone": r"0\d{9,10}",
+        "phone": r"(?<!\d)(?:\+?84|0)(?:[\s.-]?\d){9,10}(?!\d)",
         "email": r"[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}",
         "national_id": r"\b\d{9}\b|\b\d{12}\b",
         "api_key": r"sk-[a-zA-Z0-9-]+",

@@ -26,10 +26,14 @@ InputStatus = Literal["ALLOW", "BLOCK"]
 INJECTION_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
-        r"\bignore\s+(?:all\s+)?(?:previous|above)\s+instructions\b",
+        r"\bignore\s+(?:all\s+)?(?:the\s+)?(?:(?:previous|prior|above)\s+)?instructions?\b",
+        r"\bdisregard\s+(?:all\s+)?(?:the\s+)?(?:(?:previous|prior|above)\s+)?(?:instructions?|rules?)\b",
+        r"\bforget\s+(?:your\s+)?(?:instructions?|rules?|prompt)\b",
+        r"\boverride\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions?)\b",
         r"\byou\s+are\s+now\b",
         r"\bsystem\s+prompt\b",
-        r"\breveal\s+your\s+(?:instructions|prompt)\b",
+        r"\breveal\s+(?:your\s+)?(?:system\s+)?(?:instructions?|prompt)\b",
+        r"\bshow\s+(?:me\s+)?(?:your\s+)?system\s+prompt\b",
         r"\bpretend\s+you\s+are\b",
         r"\bact\s+as\s+(?:(?:a|an)\s+)?unrestricted\b",
     )
@@ -42,6 +46,28 @@ def _normalize_input(text: str) -> str:
     return "".join(
         char for char in normalized if unicodedata.category(char) != "Cf"
     )
+
+
+def _normalize_topic_text(text: str) -> str:
+    """Normalize topic text for accent-insensitive, boundary-safe matching."""
+    without_invisible = _normalize_input(text).casefold().replace("đ", "d")
+    decomposed = unicodedata.normalize("NFKD", without_invisible)
+    without_accents = "".join(
+        char for char in decomposed if unicodedata.category(char) != "Mn"
+    )
+    return " ".join(without_accents.split())
+
+
+def _contains_topic(text: str, topic: str, *, allow_inflections: bool = False) -> bool:
+    """Match a complete topic term/phrase, not a substring of another word."""
+    normalized_topic = _normalize_topic_text(topic)
+    if not normalized_topic:
+        return False
+    suffix = r"(?:s|es|ed|ing)?" if allow_inflections and " " not in normalized_topic else ""
+    return re.search(
+        rf"(?<!\w){re.escape(normalized_topic)}{suffix}(?!\w)",
+        text,
+    ) is not None
 
 
 # ============================================================
@@ -101,14 +127,14 @@ def topic_filter(user_input: str) -> InputStatus:
         ``"BLOCK"`` = chặn (off-topic hoặc topic cấm).
         ``"ALLOW"`` = cho qua (câu banking hợp lệ).
     """
-    input_lower = user_input.lower()
+    normalized_input = _normalize_topic_text(user_input)
 
     for topic in BLOCKED_TOPICS:
-        if topic in input_lower:
+        if _contains_topic(normalized_input, topic, allow_inflections=True):
             return "BLOCK"
 
     for topic in ALLOWED_TOPICS:
-        if topic in input_lower:
+        if _contains_topic(normalized_input, topic):
             return "ALLOW"
 
     return "BLOCK"
